@@ -146,7 +146,7 @@ def fetch_data(symbol, timeframe):
     try:
         interval_map = {
             "5m": "5m", "15m": "15m", "30m": "30m",
-            "1h": "60m", "2h": "120m", "4h": "240m",
+            "1h": "60m", "2h": "120m", "4h": "60m",  # 4h ke liye 60m use karenge, multiple bars check honge,
             "1d": "1d", "1wk": "1wk"
         }
         period_map = {
