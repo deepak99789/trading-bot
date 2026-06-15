@@ -135,14 +135,58 @@ def scan():
                 for z in zones:
                     key = f"{sym}_{tf}_{z['low']}_{z['high']}"
                     if key not in sent:
+                       def scan():
+    print("="*50)
+    print("🤖 SUPPLY-DEMAND BOT STARTED")
+    print("="*50)
+    print(f"📊 Symbols: {len(ALL_SYMBOLS)}")
+    print(f"⏰ Timeframes: {TIMEFRAMES}")
+    print("="*50)
+    
+    sent = {}
+    cycle = 0
+    
+    while True:
+        cycle += 1
+        print(f"\n🔄 CYCLE #{cycle} - {datetime.now().strftime('%H:%M:%S')}")
+        
+        for sym in ALL_SYMBOLS:
+            for tf in TIMEFRAMES:
+                print(f"  📍 {sym} [{tf}]")
+                df = fetch(sym, tf)
+                if df is None:
+                    print(f"     ❌ No data")
+                    continue
+                print(f"     ✅ {len(df)} candles")
+                zones = detect_zones(df, tf)
+                for z in zones:
+                    key = f"{sym}_{tf}_{z['low']}_{z['high']}"
+                    if key not in sent:
+                        # Convert Series to single values
+                        price_val = float(z['price']) if not hasattr(z['price'], 'iloc') else float(z['price'].iloc[0])
+                        low_val = float(z['low']) if not hasattr(z['low'], 'iloc') else float(z['low'].iloc[0])
+                        high_val = float(z['high']) if not hasattr(z['high'], 'iloc') else float(z['high'].iloc[0])
+                        
                         msg = f"""🚨 ALERT 🚨
 
 {sym} | {tf}
-💰 ₹{z['price']:.2f}
+💰 ₹{price_val:.2f}
 📐 {z['pattern']}
 🎯 {z['trade']}
-📈 Zone: ₹{z['low']:.2f} - ₹{z['high']:.2f}
+📈 Zone: ₹{low_val:.2f} - ₹{high_val:.2f}
 ⚡ Strength: {z['strength']}x"""
+                        try:
+                            bot.send_message(CHAT_ID, msg)
+                            print(f"     ✅ ALERT SENT! {sym} {tf}")
+                            sent[key] = True
+                            time.sleep(1)
+                        except Exception as e:
+                            print(f"     ❌ Telegram error: {e}")
+                time.sleep(0.5)
+            time.sleep(0.5)
+        
+        print(f"\n⏳ Cycle #{cycle} complete. Waiting 60 sec...")
+        time.sleep(60)
                         try:
                             bot.send_message(CHAT_ID, msg)
                             print(f"     ✅ ALERT SENT! {sym} {tf}")
