@@ -1,5 +1,4 @@
 import yfinance as yf
-import pandas as pd
 import telebot
 import time
 import os
@@ -27,100 +26,55 @@ STOCKS = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
 ALL_SYMBOLS = STOCKS
 TIMEFRAMES = ["5m", "15m", "1h"]
 
-# ---------- SUPPLY DEMAND FUNCTIONS ----------
-def get_candle_body(o, c, h, l):
-    # Convert pandas Series to single values
-    open_val = o.iloc[0] if hasattr(o, 'iloc') else o
-    close_val = c.iloc[0] if hasattr(c, 'iloc') else c
-    high_val = h.iloc[0] if hasattr(h, 'iloc') else h
-    low_val = l.iloc[0] if hasattr(l, 'iloc') else l
+# ---------- SIMPLE SUPPLY DEMAND ----------
+def check_supply_demand(df, symbol, timeframe):
+    """Simple supply-demand detection"""
+    if len(df) < 20:
+        return None
     
-    body = abs(close_val - open_val)
-    total_range = high_val - low_val
-    if total_range <= 0:
-        total_range = 1
+    # Get last few candles
+    last_high = df['High'].iloc[-1]
+    last_low = df['Low'].iloc[-1]
+    last_close = df['Close'].iloc[-1]
+    prev_close = df['Close'].iloc[-2]
     
-    body_percent = (body / total_range) * 100
-    is_bullish = close_val > open_val
+    # Simple logic: Strong move then consolidation
+    # Check for demand zone (price bounced from low)
+    recent_lows = df['Low'].tail(5).min()
+    recent_highs = df['High'].tail(5).max()
     
-    return {
-        'body': body,
-        'body_percent': body_percent,
-        'is_bullish': is_bullish
-    }
+    # If price near recent low and bullish candle
+    if last_close > prev_close * 1.01 and last_low <= recent_lows * 1.002:
+        return {
+            'type': 'DEMAND (BUY ZONE)',
+            'action': 'BUY',
+            'zone_low': recent_lows,
+            'zone_high': recent_lows * 1.01,
+            'price': last_close
+        }
+    
+    # If price near recent high and bearish candle
+    if last_close < prev_close * 0.99 and last_high >= recent_highs * 0.998:
+        return {
+            'type': 'SUPPLY (SELL ZONE)',
+            'action': 'SELL',
+            'zone_low': recent_highs * 0.99,
+            'zone_high': recent_highs,
+            'price': last_close
+        }
+    
+    return None
 
-def is_explosive(c):
-    return c['body_percent'] >= 60
-
-def is_base(c, legin):
-    return c['body'] <= (legin['body'] * 0.5)
-
-def detect_zones(df, tf):
-    zones = []
-    for i in range(2, len(df)-5):
-        legin = get_candle_body(
-            df['Open'].iloc[i], df['Close'].iloc[i],
-            df['High'].iloc[i], df['Low'].iloc[i]
-        )
-        if not is_explosive(legin):
-            continue
-        for be in range(i+1, min(i+4, len(df)-2)):
-            ok = True
-            for k in range(i+1, be+1):
-                base_cdl = get_candle_body(
-                    df['Open'].iloc[k], df['Close'].iloc[k],
-                    df['High'].iloc[k], df['Low'].iloc[k]
-                )
-                if not is_base(base_cdl, legin):
-                    ok = False
-                    break
-            if not ok:
-                continue
-            lo_start = be+1
-            lo_candles = []
-            for k in range(lo_start, min(lo_start+5, len(df))):
-                lo = get_candle_body(
-                    df['Open'].iloc[k], df['Close'].iloc[k],
-                    df['High'].iloc[k], df['Low'].iloc[k]
-                )
-                if lo['body'] < legin['body']:
-                    break
-                lo_candles.append(lo)
-            if len(lo_candles) >= 1:
-                legin_color = "GREEN" if legin['is_bullish'] else "RED"
-                lo_color = "GREEN" if lo_candles[-1]['is_bullish'] else "RED"
-                if legin_color == "GREEN" and lo_color == "GREEN":
-                    trade = "BUY"
-                    pattern = "RISE-BASE-RISE"
-                elif legin_color == "GREEN" and lo_color == "RED":
-                    trade = "SELL"
-                    pattern = "RISE-BASE-DROP"
-                elif legin_color == "RED" and lo_color == "RED":
-                    trade = "SELL"
-                    pattern = "DROP-BASE-DROP"
-                else:
-                    trade = "BUY"
-                    pattern = "DROP-BASE-RISE"
-                zones.append({
-                    'symbol': 'test',
-                    'tf': tf,
-                    'trade': trade,
-                    'pattern': pattern,
-                    'low': min(df['Low'].iloc[i:be+1]),
-                    'high': max(df['High'].iloc[i:be+1]),
-                    'price': df['Close'].iloc[-1],
-                    'strength': round(lo_candles[-1]['body']/legin['body'], 2)
-                })
-    return zones
-
-def fetch(sym, tf):
+def fetch_data(symbol, timeframe):
     try:
         int_map = {"5m": "5m", "15m": "15m", "1h": "60m"}
-        per_map = {"5m": "2d", "15m": "5d", "1h": "10d"}
-        df = yf.download(sym, period=per_map[tf], interval=int_map[tf], progress=False)
-        return df if not df.empty and len(df) > 10 else None
-    except:
-        return None
+        per_map = {"5m": "5d", "15m": "10d", "1h": "20d"}
+        df = yf.download(symbol, period=per_map[timeframe], interval=int_map[timeframe], progress=False)
+        if not df.empty and len(df) > 20:
+            return df
+    except Exception as e:
+        print(f"  Error fetching {symbol}: {e}")
+    return None
 
 # ---------- MAIN SCANNER ----------
 def scan():
@@ -131,70 +85,72 @@ def scan():
     print(f"⏰ Timeframes: {TIMEFRAMES}")
     print("=" * 50)
     
-    sent = {}
+    sent_alerts = {}
     cycle = 0
     
     while True:
         cycle += 1
         print(f"\n🔄 CYCLE #{cycle} - {datetime.now().strftime('%H:%M:%S')}")
         
-        for sym in ALL_SYMBOLS:
+        for symbol in ALL_SYMBOLS:
             for tf in TIMEFRAMES:
-                print(f"  📍 {sym} [{tf}]")
-                df = fetch(sym, tf)
+                print(f"  📍 {symbol} [{tf}]")
+                
+                # Fetch data
+                df = fetch_data(symbol, tf)
                 if df is None:
                     print(f"     ❌ No data")
                     continue
-                print(f"     ✅ {len(df)} candles")
-                zones = detect_zones(df, tf)
-                for z in zones:
-                    key = f"{sym}_{tf}_{z['low']}_{z['high']}"
-                    if key not in sent:
-                        # Convert to float values
-                        try:
-                            price_val = float(z['price'])
-                        except:
-                            price_val = float(z['price'].iloc[0]) if hasattr(z['price'], 'iloc') else 0
-                        try:
-                            low_val = float(z['low'])
-                        except:
-                            low_val = float(z['low'].iloc[0]) if hasattr(z['low'], 'iloc') else 0
-                        try:
-                            high_val = float(z['high'])
-                        except:
-                            high_val = float(z['high'].iloc[0]) if hasattr(z['high'], 'iloc') else 0
-                        
-                        msg = f"""🚨 ALERT 🚨
+                
+                print(f"     ✅ Got {len(df)} candles | Price: {df['Close'].iloc[-1]:.2f}")
+                
+                # Check for zones
+                zone = check_supply_demand(df, symbol, tf)
+                
+                if zone:
+                    alert_key = f"{symbol}_{tf}_{zone['zone_low']:.2f}"
+                    
+                    if alert_key not in sent_alerts:
+                        # Send Telegram alert
+                        msg = f"""🚨 *SUPPLY-DEMAND ALERT* 🚨
 
-{sym} | {tf}
-💰 ₹{price_val:.2f}
-📐 {z['pattern']}
-🎯 {z['trade']}
-📈 Zone: ₹{low_val:.2f} - ₹{high_val:.2f}
-⚡ Strength: {z['strength']}x"""
+📊 *Symbol:* {symbol}
+⏰ *Timeframe:* {tf}
+💰 *Price:* ₹{zone['price']:.2f}
+
+📍 *Zone Type:* {zone['type']}
+🎯 *Action:* {zone['action']}
+
+📈 *Zone Range:* ₹{zone['zone_low']:.2f} - ₹{zone['zone_high']:.2f}
+
+⏰ *Time:* {datetime.now().strftime('%H:%M:%S')}
+"""
                         try:
-                            bot.send_message(CHAT_ID, msg)
-                            print(f"     ✅ ALERT SENT! {sym} {tf}")
-                            sent[key] = True
-                            time.sleep(1)
+                            bot.send_message(CHAT_ID, msg, parse_mode='Markdown')
+                            print(f"     ✅ ✅ ALERT SENT! {symbol} {tf} - {zone['type']}")
+                            sent_alerts[alert_key] = True
+                            time.sleep(2)
                         except Exception as e:
                             print(f"     ❌ Telegram error: {e}")
+                else:
+                    print(f"     ℹ️ No zone detected")
+                
                 time.sleep(0.5)
             time.sleep(0.5)
         
-        print(f"\n⏳ Cycle #{cycle} complete. Waiting 60 sec...")
+        print(f"\n⏳ Cycle #{cycle} complete. Waiting 60 seconds...")
         time.sleep(60)
 
 # ---------- START ----------
 if __name__ == "__main__":
-    print("🚀 STARTING...")
+    print("🚀 STARTING TRADING BOT...")
     
-    # Flask thread
+    # Start Flask
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
     time.sleep(2)
     
-    # Main scan
-    print("🔁 CALLING SCAN FUNCTION...")
+    # Start scanning
+    print("🔁 STARTING SCAN...")
     scan()
