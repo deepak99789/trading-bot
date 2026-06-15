@@ -146,23 +146,23 @@ def fetch_data(symbol, timeframe):
     try:
         interval_map = {
             "5m": "5m",
-    "15m": "15m", 
-    "30m": "30m",
-    "1h": "60m",
-    "2h": "60m",     # ← 2h ke liye 60m use (2 bars check honge)
-    "4h": "60m",     # ← 4h ke liye 60m use (4 bars check honge)
-    "1d": "1d",
-    "1wk": "1wk"
+            "15m": "15m", 
+            "30m": "30m",
+            "1h": "60m",
+            "2h": "60m",
+            "4h": "60m",
+            "1d": "1d",
+            "1wk": "1wk"
         }
         period_map = {
             "5m": "5d",
-    "15m": "10d",
-    "30m": "10d",
-    "1h": "20d",
-    "2h": "20d",
-    "4h": "30d",
-    "1d": "3mo",
-    "1wk": "6mo"
+            "15m": "10d",
+            "30m": "10d",
+            "1h": "20d",
+            "2h": "20d",
+            "4h": "30d",
+            "1d": "3mo",
+            "1wk": "6mo"
         }
         
         interval = interval_map.get(timeframe, "1d")
