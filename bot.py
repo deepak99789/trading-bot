@@ -26,24 +26,19 @@ STOCKS = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
 ALL_SYMBOLS = STOCKS
 TIMEFRAMES = ["5m", "15m", "1h"]
 
-# ---------- SIMPLE SUPPLY DEMAND ----------
+# ---------- SUPPLY DEMAND FUNCTION ----------
 def check_supply_demand(df, symbol, timeframe):
-    """Simple supply-demand detection"""
     if len(df) < 20:
         return None
     
-    # Get last few candles
     last_high = df['High'].iloc[-1]
     last_low = df['Low'].iloc[-1]
     last_close = df['Close'].iloc[-1]
     prev_close = df['Close'].iloc[-2]
     
-    # Simple logic: Strong move then consolidation
-    # Check for demand zone (price bounced from low)
     recent_lows = df['Low'].tail(5).min()
     recent_highs = df['High'].tail(5).max()
     
-    # If price near recent low and bullish candle
     if last_close > prev_close * 1.01 and last_low <= recent_lows * 1.002:
         return {
             'type': 'DEMAND (BUY ZONE)',
@@ -53,7 +48,6 @@ def check_supply_demand(df, symbol, timeframe):
             'price': last_close
         }
     
-    # If price near recent high and bearish candle
     if last_close < prev_close * 0.99 and last_high >= recent_highs * 0.998:
         return {
             'type': 'SUPPLY (SELL ZONE)',
@@ -73,7 +67,7 @@ def fetch_data(symbol, timeframe):
         if not df.empty and len(df) > 20:
             return df
     except Exception as e:
-        print(f"  Error fetching {symbol}: {e}")
+        print(f"  Error: {e}")
     return None
 
 # ---------- MAIN SCANNER ----------
@@ -95,62 +89,54 @@ def scan():
         for symbol in ALL_SYMBOLS:
             for tf in TIMEFRAMES:
                 print(f"  📍 {symbol} [{tf}]")
-                
-                # Fetch data
                 df = fetch_data(symbol, tf)
                 if df is None:
                     print(f"     ❌ No data")
                     continue
                 
-                print(f"     ✅ Got {len(df)} candles | Price: {df['Close'].iloc[-1]:.2f}")
+                # FIX: Convert to float
+                current_price = float(df['Close'].iloc[-1])
+                print(f"     ✅ {len(df)} candles | Price: {current_price:.2f}")
                 
-                # Check for zones
                 zone = check_supply_demand(df, symbol, tf)
                 
                 if zone:
                     alert_key = f"{symbol}_{tf}_{zone['zone_low']:.2f}"
-                    
                     if alert_key not in sent_alerts:
-                        # Send Telegram alert
-                        msg = f"""🚨 *SUPPLY-DEMAND ALERT* 🚨
+                        # Convert zone values to float
+                        zone_low = float(zone['zone_low'])
+                        zone_high = float(zone['zone_high'])
+                        zone_price = float(zone['price'])
+                        
+                        msg = f"""🚨 ALERT 🚨
 
-📊 *Symbol:* {symbol}
-⏰ *Timeframe:* {tf}
-💰 *Price:* ₹{zone['price']:.2f}
-
-📍 *Zone Type:* {zone['type']}
-🎯 *Action:* {zone['action']}
-
-📈 *Zone Range:* ₹{zone['zone_low']:.2f} - ₹{zone['zone_high']:.2f}
-
-⏰ *Time:* {datetime.now().strftime('%H:%M:%S')}
-"""
+{symbol} | {tf}
+💰 ₹{zone_price:.2f}
+📍 {zone['type']}
+🎯 {zone['action']}
+📈 Zone: ₹{zone_low:.2f} - ₹{zone_high:.2f}"""
                         try:
-                            bot.send_message(CHAT_ID, msg, parse_mode='Markdown')
-                            print(f"     ✅ ✅ ALERT SENT! {symbol} {tf} - {zone['type']}")
+                            bot.send_message(CHAT_ID, msg)
+                            print(f"     ✅ ALERT SENT!")
                             sent_alerts[alert_key] = True
                             time.sleep(2)
                         except Exception as e:
                             print(f"     ❌ Telegram error: {e}")
                 else:
-                    print(f"     ℹ️ No zone detected")
+                    print(f"     ℹ️ No zone")
                 
-                time.sleep(0.5)
-            time.sleep(0.5)
+                time.sleep(1)
+            time.sleep(1)
         
-        print(f"\n⏳ Cycle #{cycle} complete. Waiting 60 seconds...")
+        print(f"\n⏳ Cycle #{cycle} complete. Waiting 60 sec...")
         time.sleep(60)
 
 # ---------- START ----------
 if __name__ == "__main__":
-    print("🚀 STARTING TRADING BOT...")
-    
-    # Start Flask
+    print("🚀 STARTING...")
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
     time.sleep(2)
-    
-    # Start scanning
     print("🔁 STARTING SCAN...")
     scan()
