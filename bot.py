@@ -17,14 +17,13 @@ def home():
     return "Bot Alive"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
 
 STOCKS = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
 ALL_SYMBOLS = STOCKS
 TIMEFRAMES = ["5m", "15m", "1h"]
 
 def get_price(df):
-    """Safely extract price as float"""
     val = df['Close'].iloc[-1]
     if hasattr(val, 'iloc'):
         val = val.iloc[0]
@@ -150,11 +149,18 @@ Zone: {zone['zone_low']:.2f} - {zone['zone_high']:.2f}"""
         print(f"\nCycle {cycle} complete. Waiting 60 sec...")
         time.sleep(60)
 
+# ---------- MAIN ----------
 if __name__ == "__main__":
     print("STARTING...")
-    t = threading.Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-    time.sleep(2)
+    
+    # Start Flask in background
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    # Wait a bit
+    time.sleep(3)
+    
+    # Start the scanner
     print("SCANNING STARTED...")
     scan()
