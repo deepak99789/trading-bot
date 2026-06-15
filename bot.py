@@ -176,18 +176,25 @@ def fetch_data(symbol, timeframe):
     return None
 
 def scan_and_alert():
-    print(f"🤖 Supply-Demand Bot Started at {datetime.now()}")
-    print(f"📊 Total Symbols: {len(ALL_SYMBOLS)}")
-    print(f"⏰ Timeframes: {TIMEFRAMES}")
+    print("🤖 Supply-Demand Bot Started at", datetime.now())
+    print("📊 Total Symbols:", len(ALL_SYMBOLS))
+    print("⏰ Timeframes:", TIMEFRAMES)
     
     alert_history = {}
+    cycle_count = 0
     
     while True:
+        cycle_count += 1
+        print(f"\n🔄 Scan Cycle #{cycle_count} at {datetime.now()}")
+        
         for symbol in ALL_SYMBOLS:
             for timeframe in TIMEFRAMES:
                 try:
+                    print(f"  Scanning {symbol} on {timeframe}...")
+                    
                     df = fetch_data(symbol, timeframe)
-                    if df is None:
+                    if df is None or df.empty:
+                        print(f"    ❌ No data for {symbol}")
                         continue
                     
                     zones = detect_supply_demand_zones(df, timeframe)
@@ -196,42 +203,37 @@ def scan_and_alert():
                     for zone in zones:
                         alert_key = f"{symbol}_{timeframe}_{zone['zone_low']}_{zone['zone_high']}"
                         
-                        if alert_key not in alert_history or (datetime.now() - alert_history[alert_key]).seconds > 3600:
+                        if alert_key not in alert_history:
                             msg = f"""
 🚨 *SUPPLY-DEMAND ZONE ALERT* 🚨
 
 📊 *Symbol:* `{symbol}`
 ⏰ *Timeframe:* `{timeframe}`
-💰 *Current Price:* ₹{current_price:.2f}
+💰 *Price:* ₹{current_price:.2f}
 
 📐 *Pattern:* {zone['pattern']}
 🎯 *Action:* {zone['trade']}
 
-📈 *Zone Range:* ₹{zone['zone_low']:.2f} - ₹{zone['zone_high']:.2f}
+📈 *Zone:* ₹{zone['zone_low']:.2f} - ₹{zone['zone_high']:.2f}
 ⚡ *Strength:* {zone['strength']}x
-🔥 *Legin Body:* {zone['legin_body_pct']}%
 
-⏰ *Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-#SupplyDemand #{symbol}
+⏰ *Time:* {datetime.now().strftime('%H:%M:%S')}
 """
                             try:
                                 bot.send_message(CHAT_ID, msg, parse_mode='Markdown')
-                                print(f"✅ Alert sent: {symbol} {timeframe} - {zone['pattern']}")
+                                print(f"    ✅ Alert sent for {symbol} on {timeframe}")
                                 alert_history[alert_key] = datetime.now()
                             except Exception as e:
-                                print(f"Telegram error: {e}")
-                            
-                            time.sleep(1)
+                                print(f"    ❌ Telegram error: {e}")
                     
                 except Exception as e:
-                    print(f"Error scanning {symbol} {timeframe}: {e}")
+                    print(f"    ❌ Error: {e}")
                 
-                time.sleep(0.5)
+                time.sleep(0.5)  # Rate limit avoid karne ke liye
             
-            time.sleep(1)
+            time.sleep(1)  # Symbol ke beech mein gap
         
-        print(f"\n🔄 Full cycle complete at {datetime.now()}. Waiting 60 seconds...")
+        print(f"\n⏳ Cycle complete. Waiting 60 seconds...")
         time.sleep(60)
 
 # ---------- START ----------
@@ -242,6 +244,18 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
+    
+    # Wait a bit for Flask to start
+    time.sleep(2)
+    
+    # Start trading bot
+    print("🔁 Calling scan_and_alert() function...")
+    try:
+        scan_and_alert()
+    except Exception as e:
+        print(f"❌ Error in scan_and_alert: {e}")
+        import traceback
+        traceback.print_exc()
     
     # Wait a bit for Flask to start
     time.sleep(2)
