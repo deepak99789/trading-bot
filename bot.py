@@ -29,9 +29,25 @@ TIMEFRAMES = ["5m", "15m", "1h"]
 
 # ---------- SUPPLY DEMAND ----------
 def get_candle_body(o, c, h, l):
-    body = abs(c - o)
-    total = h - l if h - l > 0 else 1
-    return {'body': body, 'body_percent': (body/total)*100, 'is_bullish': c > o}
+    # Convert pandas Series to single values
+    open_val = o.iloc[0] if hasattr(o, 'iloc') else o
+    close_val = c.iloc[0] if hasattr(c, 'iloc') else c
+    high_val = h.iloc[0] if hasattr(h, 'iloc') else h
+    low_val = l.iloc[0] if hasattr(l, 'iloc') else l
+    
+    body = abs(close_val - open_val)
+    total_range = high_val - low_val
+    if total_range <= 0:
+        total_range = 1
+    
+    body_percent = (body / total_range) * 100
+    is_bullish = close_val > open_val
+    
+    return {
+        'body': body,
+        'body_percent': body_percent,
+        'is_bullish': is_bullish
+    }
 
 def is_explosive(c):
     return c['body_percent'] >= 60
